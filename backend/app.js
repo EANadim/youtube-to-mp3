@@ -1,10 +1,12 @@
 const express = require('express');
+const cors = require('cors'); // Add the CORS package
 const { exec } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const app = express();
 const port = 3000;
 
+app.use(cors());
 app.use(express.urlencoded({ extended: true }));
 
 // Download MP3 endpoint
@@ -19,12 +21,15 @@ app.post('/download', (req, res) => {
     exec(command, (error, stdout, stderr) => {
         if (error) {
             console.error(`Error: ${error.message}`);
-            return res.status(500).json({ error: error.message });
+            if (!res.headersSent) {
+                return res.status(500).json({ error: error.message });
+            }
         }
-                
+
         const fileName = extractFileName(stdout);
         const filePath = path.join(__dirname, fileName);
 
+        // Ensure that file exists before attempting to send
         sendFile(res, filePath, fileName);
     });
 });
@@ -45,13 +50,22 @@ function extractFileName(inputString) {
 function sendFile(res, filePath, fileName) {
     if (!fs.existsSync(filePath)) {
         console.error('MP3 file not found!');
-        return res.status(500).json({ error: 'MP3 file was not created'+fileName});
+        if (!res.headersSent) {
+            return res.status(500).json({ error: 'MP3 file was not created: ' + fileName });
+        }
     }
 
+    const sanitizedFileName = (filename) => {
+        return filename.replace(/[^a-zA-Z0-9.-_]/g, '_');  // Replace invalid characters with an underscore
+    };
+    
+    res.setHeader('Content-Disposition', `attachment; filename="${sanitizedFileName(fileName)}"`);
     res.download(filePath, fileName, (err) => {
         if (err) {
             console.error(`Error sending file: ${err}`);
-            return res.status(500).json({ error: 'Failed to send MP3 file' });
+            if (!res.headersSent) {
+                return res.status(500).json({ error: 'Failed to send MP3 file' });
+            }
         }
 
         // Clean up the file after sending
