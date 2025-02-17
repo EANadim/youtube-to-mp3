@@ -1,0 +1,1 @@
+This project has two part frontend and backend
